@@ -1019,6 +1019,10 @@ void ReadProcessor::processBuffer() {
       for (auto tr : u) {
 
         auto x = index.findPosition(tr, km, um, p);
+        auto pos_info = x;
+        // ENSMUST00000161581.2 110 250 62 : 65 -55 1 : 10
+        std::cout << index.target_names_[tr] << " " << "xx" << " " << index.target_lens_[tr] << " " << um.dist << " : " << "xx" << " " << pos_info.first << " " << pos_info.second << " : " << "xx" << std::endl; 
+        
         // if the fragment is within bounds for this transcript, keep it
         if (x.second && x.first + fl <= (int)index.target_lens_[tr]) {
           vtmp.add(tr);
@@ -1582,6 +1586,229 @@ void BUSProcessor::processBuffer() {
         // push back BUS record
         b.ec = elem->second;
         bv.push_back(b);
+      }
+      
+      // Output k-mer positions if requested
+      if (mp.opt.kmer_pos) {
+        for (const auto& ec_info : v) {
+          // TODO: Don't use shortcut if opt.kmer_pos (actually it's fine?), readme = write mapping interval
+          auto l = seqlen;
+          auto um = ec_info.first;
+          auto kmer_pos = ec_info.second; // Where the k-mer mapping occurred within the read
+          auto ec = um.getData()->ec[um.dist].getIndices() & u; // What tx's the k-mer mapping is compatible with
+          Kmer empty_kmer; // Empty k-mer (not used)
+          //if (kmer_pos >= (l-index.k)) continue;
+          // Where does it occur along the contig? Why does read pos matter?
+          //std::cout << "START" << std::endl;
+          for (auto tr : ec) { // Iterate through tx's of the EC
+            // pos >= l-k = 110-31 = 79
+            auto pos_info = index.findPosition(tr, empty_kmer, um, kmer_pos); // Go through each tx, and write position interval of mapping against each tx
+            Kmer km((seq+kmer_pos));
+            bool isrep = (km == km.rep());
+            const Node* n = um.getData();
+            auto mc = n->get_mc_contig(um.dist);
+            auto ecs = n->ec.get_leading_vals(um.dist);
+            const auto& v_ec = ecs[ecs.size() - 1];
+            const Roaring& ec = v_ec.getIndices(); // transcripts
+            uint32_t bitmask = 0x7FFFFFFF;
+            uint32_t rawpos = v_ec.get(tr, true).minimum();
+            int trpos = rawpos & bitmask;
+            bool trsense = (rawpos == trpos);
+            auto um_dist = um.dist - mc.first;
+            std::string s2;
+            // v_ec[trs[i]]) != trsense
+            // TODO: Need to see if kmer is reverse complement in sequence as in read
+            //std::cout << "" << index.target_names_[tr] << " " << pos_info.first << " " << pos_info.second << " " << " " << um.strand << " " << (km==km.rep()) << " " << km.rep().toString() << " " << kmer_pos << " " << um.dist << " | " << (pos_info.first-kmer_pos-index.k+1) << " :: " << um.getData()->get_mc_contig(um.dist).first << " " << um.getData()->get_mc_contig(um.dist).second << std::endl;
+            //std::cout << (pos_info.first-kmer_pos-index.k+1-kmer_pos) << std::endl;
+            //std::cout << (um.getData()->get_mc_contig(um.dist).second - um.dist) << std::endl;
+            //std::cout << index.target_names_[tr] << " " << km.toString() << " " << km.twin().toString() << " " << trsense << " " << um.strand << " " << isrep << " " << pos_info.second << " kmer_pos=" << kmer_pos << " pos_info.first=" << pos_info.first << " " << (pos_info.first+kmer_pos) << " trpos=" << trpos << " " << um.dist << " " << um_dist << " " << mc.first << " " << mc.second << " " << um.getData()->get_mc_contig(um.dist).first << " " << um.getData()->get_mc_contig(um.dist).second << " " << ecs.size() << std::endl;
+            if (um.strand) {
+              if (trsense) {
+                if (trpos == 0) {
+                  std::cout << (isrep ? (pos_info.first+kmer_pos) : um_dist+kmer_pos+1);
+                  s2 = "A";
+                } else {
+                  //std::cout << pos_info.first+kmer_pos; // (trpos-pos_info.first+1 == kmer_pos ? : pos_info.first+kmer_pos);
+                  int ii = -1;
+                  if (um_dist == 0) {
+                    ii = ((trpos-(pos_info.first+um.size+index.k)+trpos-1));
+                    if (ii <= trpos+1) ii = trpos+1;
+                    std::cout << ii;
+                  } else {
+                    std::cout << (trpos+um_dist+kmer_pos+1);
+                  }
+                  std::cout << " ii=" << ii << " trpos=" << trpos << " ";
+                  //std::cout << (/*trpos-pos_info.first+1 == kmer_pos*/um_dist == 0 ? ((trpos-(pos_info.first+um.size+index.k)+trpos-1)) : (trpos+um_dist+kmer_pos+1)/*pos_info.first+kmer_pos*/); // trpos-(pos_info.first+um.size+index.k)+trpos-1;
+                  s2 = "B"; // 1662-615-31
+                  // 1001-(893+59+31)+1001-1 = 1018
+                  // 1 1 0 1|1662 (893 109 1001) |  (0,0,1,59)[0,29]B (^FROM ABOVE^)
+                  // 332+346+109+1 = 788; trpos+um_dist+kmer_pos
+                  // 1 1 1 1|81843 (24821 65 24885) |  (0,0,1,56)[0,26]B = 24885-(24821+56+31)+24885-1 = 24861
+                  // ^^ABOVE should be: 24885 (so where's the missing 24? maybe it's the isrep? nope)
+                  // 24886-((24796+56+31)+24886-1) // 24	24886 MGP_C57BL6NJ_T0055893.1 CCGTGACTCTCTGCGGCCTGACCATGGCCAGTACATGATCAAAGTTGAGAATGATCACGGTGTTGCAAAAGCTCCTTGCTCCGTCAGTGTGTTAGATACACCAGGACCACCAATCAACTTTGTATTTGAGGATATTAGAA GTTAGATACACCAGGACCACCAATCAACTTT AAAGTTGATTGGTGGTCCTGGTGTATCTAAC 1 1 0 1|81843 (24796 90 24885) |  (0,0,1,56)[0,26]B
+                  // ^Should be 24910 (where's the missing 24?)
+                  //^trpos=24885, pos_info.first=24796 um.size=56 index.k=31
+                  // ii=((24885-(24796+56+31)+24885-1)) = 24886
+                  // 44322 ii=44322 trpos=44321  MGP_C57BL6NJ_T0055896.1 CCGTGACTCTCTGCGGCCTGACCATGGCCAGTACATGATCAAAGTTGAGAATGATCACGGTGTTGCAAAAGCTCCTTGCTCCGTCAGTGTGTTAGATACACCAGGACCACCAATCAACTTTGTATTTGAGGATATTAGAA GTTAGATACACCAGGACCACCAATCAACTTT AAAGTTGATTGGTGGTCCTGGTGTATCTAAC 1 1 0 1|100228 (44232 90 44321) |  (0,0,1,56)[0,26]B
+                  // ^How to fit this? Should be 44346 (again a missing 24!)
+                  
+                  // pos_info.second << "|" << index.target_lens_[tr]  << " (" << pos_info.first << " " << kmer_pos << " " << trpos << ") | " << " (" << um_dist << "," << um.dist << "," << um.len << "," << um.size << ")" << "[" << mc.first << "," << mc.second << "]"<< s2 << std::endl;
+                }
+                //std::cout << "A"<< " " << pos_info.first << " " << kmer_pos << " " << um_dist << " " << um.dist << " " << trpos;
+                // index.target_lens_[tr]  << " (" << pos_info.first << " " << kmer_pos << " " << trpos << ") | " << " (" << um_dist 
+              } else {
+                std::cout  << (pos_info.first-kmer_pos-index.k+1);
+                s2 = "C";
+              }
+            } else {
+              if (trsense) {
+                //std::cout << (um_dist-kmer_pos+1) << "     " << pos_info.first << " " << kmer_pos << " " << um_dist << "X";
+                std::cout << (trpos+um_dist+1);
+                s2 = "D";
+              } else {
+                //std::cout << "A:" << (mc.second-(kmer_pos + pos_info.first)) << " " << pos_info.first << " " << kmer_pos; // (mc.second-((kmer_pos + pos_info.first))+pos_info.first+um_dist) << "Y" << std::endl;
+                std::cout << (mc.second == (kmer_pos + pos_info.first+1) ? mc.second : kmer_pos + pos_info.first);// << "Y";
+                s2 = "E";
+                //std::cout << (kmer_pos + pos_info.first) << "Y" << " " << mc.first << " " << mc.second << " " << um.getData()->get_mc_contig(um_dist).first << " " << um.getData()->get_mc_contig(um_dist).second << " " << ecs.size() << "YY";
+                //std::cout << (pos_info.first+kmer_pos-(pos_info.first-um_dist)+1) << " " << pos_info.first << " " << kmer_pos << " " << um_dist << " " << um.dist << "Y";
+                //std::cout << (pos_info.first + kmer_pos) << "Y" << (pos_info.first+kmer_pos-(pos_info.first-um_dist)+1) << " " << pos_info.first << " " << kmer_pos << " " << um_dist << "Y" << " " << um.dist << " " << mc.second;
+              }
+              
+            }
+            std::cout << " " << index.target_names_[tr] << " " << seq << " " << km.toString() << " " << km.twin().toString() << " " << trsense << " " << um.strand << " " << isrep << " " << pos_info.second << "|" << index.target_lens_[tr]  << " (" << pos_info.first << " " << kmer_pos << " " << trpos << ") | " << " (" << um_dist << "," << um.dist << "," << um.len << "," << um.size << ")" << "[" << mc.first << "," << mc.second << "]"<< s2 << std::endl;
+            
+            
+                        /*if (isrep) {
+              if (um.strand && pos_info.second) {
+                std::cout << (um.getData()->get_mc_contig(um.dist).second - um.dist) << "a"; // TODO: txlen-this
+              } else {
+                //std::cout << (um.strand ? ((int)(um.getData()->get_mc_contig(um.dist).second - um.dist)) : ((int)(um.getData()->get_mc_contig(um.dist).second - um.dist) + "b" + um.strand));
+                bool iscon = (km.toString() == Kmer(seq+(um.getData()->get_mc_contig(um.dist).second - um.dist)).twin().toString());
+                if (um.strand) {
+                  std::cout << ((int)(um.getData()->get_mc_contig(um.dist).second - um.dist));
+                } else {
+                  const Node* n = um.getData();
+                  auto mc = n->get_mc_contig(um.dist);
+                  auto ecs = n->ec.get_leading_vals(um.dist);
+                  const auto& v_ec = ecs[ecs.size() - 1];
+                  const Roaring& ec = v_ec.getIndices(); // transcripts
+                  uint32_t bitmask = 0x7FFFFFFF;
+                  uint32_t rawpos = v_ec.get(tr, true).minimum();
+                  int trpos = rawpos & bitmask;
+                  bool trsense = (rawpos == trpos);
+                  auto um_dist = um.dist - mc.first;
+                  
+                  if (!trsense) {
+                    std::cout << (pos_info.first+kmer_pos) << std::endl;
+                  } else {
+                    std::cout << (trpos) << std::endl;
+                  }
+                  
+                  if (iscon) { // revcomp
+                  std::cout << (std::to_string((int)(um.getData()->get_mc_contig(um.dist).second - um.dist)) + "b" + std::to_string(um.strand)) + " km2=" + std::to_string(iscon) + " " + Kmer(seq+(um.getData()->get_mc_contig(um.dist).second - um.dist)).toString() + " ";
+                  std::cout << " pos_info.first=" << pos_info.first;
+                  std::cout << " kmer_pos=" << kmer_pos << " um.dist=" << um.dist << " um.size=" << um.size << " um.len=" << um.len;
+                  std::cout << " mc_first=" << um.getData()->get_mc_contig(um.dist).first << " mc_second=" << um.getData()->get_mc_contig(um.dist).second;
+                  std::cout << " trsense=" << trsense << " um_dist=" << um_dist << " trpos=" << trpos << " mc.first=" << mc.first;
+                  } else {
+                    Kmer km2(seq+((int)(um.getData()->get_mc_contig(um.dist).second - um.dist))); // TODO: needs to be tx sequence [which we don't have] -- maybe try to get tx strand
+                    std::cout << (std::to_string((int)(um.getData()->get_mc_contig(um.dist).second - um.dist)) + "bb") + " " + km.twin().toString() + " " + km2.toString();
+                    std::cout << " pos_info.first=" << pos_info.first;
+                    std::cout << " kmer_pos=" << kmer_pos << " um.dist=" << um.dist << " um.size=" << um.size << " um.len=" << um.len;
+                    std::cout << " mc_first=" << um.getData()->get_mc_contig(um.dist).first << " mc_second=" << um.getData()->get_mc_contig(um.dist).second;
+                    std::cout << " trsense=" << trsense << " um_dist=" << um_dist << " trpos=" << trpos << " mc.first=" << mc.first;
+                  }
+                  if (km.toString() != std::to_string((int)(um.getData()->get_mc_contig(um.dist).second - um.dist))) {
+                    
+                  }
+                }
+                //std::cout << (um.strand ? ((int)(um.getData()->get_mc_contig(um.dist).second - um.dist)) : ((int)5));
+                
+                //  + " pos_info.first=" + pos_info.first + " kmer_pos=" + kmer_pos + " um.dist=" + um.dist + " um.size=" + um.size + " um.len=" + um.len + " mc_first=" + um.getData()->get_mc_contig(um.dist).first + " mc_second=" + um.getData()->get_mc_contig(um.dist).second
+              }
+              
+            } else {
+              if (um.strand && pos_info.second) {
+                std::cout << (kmer_pos+pos_info.first-1) << "TOdo";
+              } else {
+                std::cout << (kmer_pos+pos_info.first-1) << "c";
+                //std::cout << kmer_pos << "ii" << um.size << " : " << pos_info.first << " " << pos_info.second << " " << " " << um.strand << " " << (km==km.rep()) << " " << km.rep().toString() << " " << kmer_pos << " " << um.dist << " | " << (pos_info.first-kmer_pos-index.k+1) << " :: " << um.getData()->get_mc_contig(um.dist).first << " " << um.getData()->get_mc_contig(um.dist).second;
+                //pos_info = index.findPosition(tr, km, kmer_pos);
+                // Maybe if pos_info.second is less than 0, just relapse to um.getData()->get_mc_contig(um.dist).second-1
+                //std::cout << kmer_pos << "jj" << um.size << " : " << pos_info.first << " " << pos_info.second << " " << " " << um.strand << " " << (km==km.rep()) << " " << km.rep().toString() << " " << kmer_pos << " " << um.dist << " | " << (pos_info.first-kmer_pos-index.k+1) << " :: " << um.getData()->get_mc_contig(um.dist).first << " " << um.getData()->get_mc_contig(um.dist).second;
+              }
+            }*/
+            //std::cout << pos_info.second << " " << " " << um.strand << " " << (km==km.rep()) << " " << std::endl;
+            //std::cout << std::endl;
+            //pos_info = index.findPosition(tr, km, kmer_pos); // Go through each tx, and write position interval of mapping against each tx
+            //std::cout << "REAL: " << index.target_names_[tr] << " " << pos_info.first << " " << pos_info.second << std::endl;
+            /*const Node* n = um.getData();
+            auto mc = n->get_mc_contig(um.dist);
+            auto ecs = n->ec.get_leading_vals(um.dist);
+            const auto& v_ec = ecs[ecs.size() - 1];
+            uint32_t bitmask = 0x7FFFFFFF, rawpos;
+            rawpos = v_ec.get(tr, true).minimum();
+            bool isrep = (km == km.rep());
+            int actual_pos = pos_info.second ? pos_info.first+kmer_pos : pos_info.first-l-kmer_pos+1; // TODO: paired-end; TODO: seqlen take into account actual mapping range
+            if (!isrep) {
+              actual_pos = kmer_pos+pos_info.first;
+              std::cout << "ACTUALv: " << actual_pos << std::endl;
+            }*/
+            // ENSMUST00000161581.2 110 250 62 : 65 -55 1 : 10
+            // ENSMUST00000161581.2 110 250 62 : 65 -55 1 : 10 | 0 / 0 // 0 | 2 // 0 72
+            // (maybe kmer_pos should not be greater than um.dist?)
+            // um.dist+pos_info.first+kmer_pos+1
+            //std::cout << index.target_names_[tr] << " " << seqlen << " " << index.target_lens_[tr] << " " << um.dist << " " << " : " << kmer_pos << " " << pos_info.first << " " << pos_info.second << " : " << actual_pos << " | " << (km == km.rep()) << " / " << (rawpos & bitmask) << " // " << (rawpos == (rawpos & bitmask)) << " | " << um.getData()->ec[um.dist].getIndices().cardinality() << " // " << um.getData()->get_mc_contig(um.dist).first << " " << um.getData()->get_mc_contig(um.dist).second << " ||| " << (index.target_lens_[tr]-seqlen-kmer_pos+um.dist+actual_pos-1-(rawpos & bitmask)) << std::endl;
+            //std::cout << (index.target_lens_[tr]-seqlen) << " " << kmer_pos << " " << um.dist << " " << actual_pos << " " << (rawpos & bitmask) << std::endl;
+            // pos_info.second ? pos_info.first+kmer_pos : pos_info.first?
+            // How to write? Indiv tx id [aka no EC] and the mapping position -- can have multiple mapping pos for each tx; what about sense/antisense
+            // BUSdata write: each-mapping-kmer -> EC -> tx -> pos [can tx have interval?]
+            // Aka pos 2 of read1 mapped to tx A pos100 and tx B pos200 and txA pos150
+          }
+          
+          //std::cout << "----" << std::endl;
+          //std::cout << "END" << std::endl;
+          // Two factors: Where in the read does mapping occur, and where in tx does mapping occur? [we want the latter, so we can build a window around tx mapping]
+          
+          // Do we need each tx in pseudoalignment? Probably; so each TX gets one
+          // Should we get position in general or position w.r.t. to each transcript?
+           // std::vector<std::pair<const_UnitigMap<Node>, int32_t>>& v1
+           // ec = v[i].first.getData()->ec[v[i].first.dist].getIndices();
+           /*
+            *       Kmer km;
+            
+            if (!v1.empty()) {
+            auto res = findFirstMappingKmer(v1);
+            um = res.first;
+            p = res.second;
+            km = um.getMappedHead();
+            }
+            if (!v2.empty()) {
+            auto res = findFirstMappingKmer(v2);
+            um = res.first;
+            p = res.second;
+            km = um.getMappedHead();
+            }
+            
+            // for each transcript in the pseudoalignment
+            for (auto tr : u) {
+            
+            auto x = index.findPosition(tr, km, um, p);
+            // if the fragment is within bounds for this transcript, keep it
+            if (x.second && x.first + fl <= (int)index.target_lens_[tr]) {
+            vtmp.add(tr);
+            } else {
+            //pass
+            }
+            if (!x.second && x.first - fl >= 0) {
+            vtmp.add(tr);
+            } else {
+            //pass
+            }
+            }
+            
+            */
+        }
       }
     }
 

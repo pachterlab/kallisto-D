@@ -518,10 +518,12 @@ void ParseOptionsBus(int argc, char **argv, ProgramOptions& opt) {
   int batch_barcodes_flag = 0;
   int ec_set_union_flag = 0;
   int dfk_onlist_flag = 0;
+  int pos_flag = 0;
 
   const char *opt_string = "i:o:x:t:lbng:c:T:B:N:";
   static struct option long_options[] = {
     {"verbose", no_argument, &verbose_flag, 1},
+    {"pos", no_argument, &pos_flag, 1},
     {"dfk-onlist", no_argument, &dfk_onlist_flag, 1},
     {"union", no_argument, &ec_set_union_flag, 1},
     {"index", required_argument, 0, 'i'},
@@ -666,6 +668,10 @@ void ParseOptionsBus(int argc, char **argv, ProgramOptions& opt) {
 
   if (ec_set_union_flag) {
     opt.ec_set_union = true;
+  }
+  
+  if (pos_flag) {
+    opt.kmer_pos = true;
   }
   
   opt.single_overhang = true;
@@ -859,6 +865,11 @@ bool CheckOptionsBus(ProgramOptions& opt) {
   
   if (opt.max_num_reads < 0) {
     std::cerr << ERROR_STR << " --numReads must be a positive number" << std::endl;
+    ret = false;
+  }
+  
+  if (opt.kmer_pos && !opt.num) {
+    std::cerr << ERROR_STR << " Cannot store k-mer positions without outputting read number" << std::endl;
     ret = false;
   }
 
@@ -1971,6 +1982,7 @@ void usageBus() {
        << "-t, --threads=INT             Number of threads to use (default: 1)" << endl
        << "-b, --bam                     Input file is a BAM file" << endl
        << "-n, --num                     Output number of read in flag column (incompatible with --bam)" << endl
+       << "    --pos                     Output k-mer positions in pad column (must be used with --num)" << endl
        << "-N, --numReads                Maximum number of reads to process from supplied input" << endl
        << "-T, --tag=STRING              5′ tag sequence to identify UMI reads for certain technologies" << endl
        << "    --fr-stranded             Strand specific reads for UMI-tagged reads, first read forward" << endl

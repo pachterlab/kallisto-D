@@ -115,6 +115,7 @@ struct ProgramOptions {
   BUSOptions busOptions;
   bool bam;
   bool num;
+  bool kmer_pos;
   std::string batch_file_name;
   std::vector<std::vector<std::string> > batch_files;
   std::vector<std::string> batch_ids;
@@ -179,6 +180,7 @@ ProgramOptions() :
   bus_mode(false),
   bam(false),
   num(false),
+  kmer_pos(false),
   plaintext(false),
   write_index(false),
   single_end(false),

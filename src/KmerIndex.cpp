@@ -1880,7 +1880,13 @@ std::pair<int,bool> KmerIndex::findPosition(int tr, Kmer km, const_UnitigMap<Nod
       }
       unmapped_len = right_one - left_one;
       int64_t padding = um.size-um.dist-(unmapped_len)-k+1;
-      ret = {trpos+padding-p, !csense}; // case II
+      if (trpos+padding-p < 0) {
+        std::cout << "II" << trpos << " " << padding << " " << p << " " << unmapped_len << std::endl;
+        ret = {um.size-unmapped_len-k-p-trpos, !csense}; // case II
+      } else {
+        std::cout << "IIII" << trpos << " " << padding << " " << p << " " << unmapped_len << std::endl;
+        ret = {trpos+padding-p, !csense}; // case II
+      }
     }
   }
   // DEBUG:
