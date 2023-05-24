@@ -1590,11 +1590,26 @@ void BUSProcessor::processBuffer() {
       
       // Output k-mer positions if requested
       if (mp.opt.kmer_pos) {
+        /*if (true) {
+          auto res = findFirstMappingKmer(v);
+          auto um = res.first;
+          auto p = res.second;
+          auto km = um.getMappedHead();
+          Kmer km2((seq+p));
+          auto ec = um.getData()->ec[um.dist].getIndices() & u; // What tx's the k-mer mapping is compatible with
+          for (auto tr : ec) {
+            std::cout << (p) << " " << index.target_names_[tr] << " " << "X" << " " << km2.toString() << " " << km2.twin().toString() << " " << km.toString() << " " << km.twin().toString() << std::endl;
+          }
+        }*/
         for (const auto& ec_info : v) {
+          //auto ec_info = v[0]; // TODO: remove
           // TODO: Don't use shortcut if opt.kmer_pos (actually it's fine?), readme = write mapping interval
           auto l = seqlen;
           auto um = ec_info.first;
           auto kmer_pos = ec_info.second; // Where the k-mer mapping occurred within the read
+          if (v.size() > 1 && kmer_pos == l-index.k) {
+            continue; // Fake position; continue
+          }
           auto ec = um.getData()->ec[um.dist].getIndices() & u; // What tx's the k-mer mapping is compatible with
           Kmer empty_kmer; // Empty k-mer (not used)
           //if (kmer_pos >= (l-index.k)) continue;
@@ -1629,17 +1644,33 @@ void BUSProcessor::processBuffer() {
                   s2 = "A";
                 } else {
                   //std::cout << pos_info.first+kmer_pos; // (trpos-pos_info.first+1 == kmer_pos ? : pos_info.first+kmer_pos);
-                  int ii = -1;
+                  int ii = 0;
                   if (um_dist == 0) {
-                    ii = ((trpos-(pos_info.first+um.size+index.k)+trpos-1));
-                    if (ii <= trpos+1) ii = trpos+1;
+                    int diff = 0;//;(trpos+um_dist+kmer_pos+1)-((trpos-(pos_info.first+um.size+index.k)+trpos-1));
+                    //diff = diff - (kmer_pos+mc.second-1);
+                    ii = 0;//((trpos-(pos_info.first+um.size+index.k)+trpos-1));
+                    if (true || ii <= trpos+1) {
+                      ii = trpos+1;
+                      if (km.rep() != um.getUnitigHead().rep() && km.rep() != um.getMappedHead().rep()/*!isrep*/) {
+                        ii += um.size-index.k;
+                        s2 = "M";
+                      } else {
+                        ii = pos_info.first+kmer_pos;
+                        s2 = "N";
+                      }
+                    } else {
+                      s2 = "G";
+                    }
                     std::cout << ii;
+                    s2=s2 + std::to_string(trpos+um_dist+kmer_pos+1) + ":" + std::to_string((trpos-(pos_info.first+um.size+index.k)+trpos-1)) + ":" + std::to_string(diff) + "/" + std::to_string(trpos) + "/" + std::to_string((trpos-(pos_info.first+um.size+index.k)+trpos-1));
+                    s2 = s2 + ":" + std::to_string(n->get_mc_contig(mc.first-1).first) + ":"  + std::to_string(n->get_mc_contig(mc.first-1).second) + "::" + um.mappedSequenceToString() + "-" + um.referenceUnitigToString() + "=" + um.getUnitigHead().rep().toString() + " " + um.getMappedHead().rep().toString() + " || " + km.toString();
                   } else {
-                    std::cout << (trpos+um_dist+kmer_pos+1);
+                    std::cout << (kmer_pos+trpos+um_dist+1); //(trpos+um_dist+kmer_pos+1); // (pos_info.first+kmer_pos); //;(trpos+um_dist+kmer_pos+1);
+                    s2="Z";
                   }
-                  std::cout << " ii=" << ii << " trpos=" << trpos << " ";
+                  //std::cout << " ii=" << ii << " trpos=" << trpos << " ";
                   //std::cout << (/*trpos-pos_info.first+1 == kmer_pos*/um_dist == 0 ? ((trpos-(pos_info.first+um.size+index.k)+trpos-1)) : (trpos+um_dist+kmer_pos+1)/*pos_info.first+kmer_pos*/); // trpos-(pos_info.first+um.size+index.k)+trpos-1;
-                  s2 = "B"; // 1662-615-31
+                  //s2 = "B"; // 1662-615-31
                   // 1001-(893+59+31)+1001-1 = 1018
                   // 1 1 0 1|1662 (893 109 1001) |  (0,0,1,59)[0,29]B (^FROM ABOVE^)
                   // 332+346+109+1 = 788; trpos+um_dist+kmer_pos
