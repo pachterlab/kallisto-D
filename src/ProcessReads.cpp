@@ -1665,8 +1665,25 @@ void BUSProcessor::processBuffer() {
                     s2=s2 + std::to_string(trpos+um_dist+kmer_pos+1) + ":" + std::to_string((trpos-(pos_info.first+um.size+index.k)+trpos-1)) + ":" + std::to_string(diff) + "/" + std::to_string(trpos) + "/" + std::to_string((trpos-(pos_info.first+um.size+index.k)+trpos-1));
                     s2 = s2 + ":" + std::to_string(n->get_mc_contig(mc.first-1).first) + ":"  + std::to_string(n->get_mc_contig(mc.first-1).second) + "::" + um.mappedSequenceToString() + "-" + um.referenceUnitigToString() + "=" + um.getUnitigHead().rep().toString() + " " + um.getMappedHead().rep().toString() + " || " + km.toString();
                   } else {
-                    std::cout << (kmer_pos+trpos+um_dist+1); //(trpos+um_dist+kmer_pos+1); // (pos_info.first+kmer_pos); //;(trpos+um_dist+kmer_pos+1);
-                    s2="Z";
+                    if (um.getMappedHead().rep() == km.rep()) {
+                      std::cout << (pos_info.first + kmer_pos);
+                      s2 = "R";
+                    } else {
+                      // TODO: Compare orientations of mappedhead vs. km () or if um.mappedhead.rep() is not found at the beginning of the read,do read_length-kmer_pos
+                      /*
+                       * 4087 MGP_C57BL6NJ_T0079474.1 AAGCAGTGGTATCAACGCAGAGTGAATGAGAGTTTATGAGCTTGCAAGGGAGCTATGCTCTTCTTTCAGCCTGGCAAACTTAAGTCTACCTCATTTTCAGATCACAATGTGCGGTTCCTATAGGTAGAAAGAGAAGATGT ATGAGAGTTTATGAGCTTGCAAGGGAGCTAT ATAGCTCCCTTGCAAGCTCATAAACTCTCAT 1 1 0 1|4478 (4037 25 3565) |  (496,496,1,590)[0,560]TZ4087:2471:/3565/2471:0:560::ATGAGAGTTTATGAGCTTGCAAGGGAGCTAT-AAAAAAAACCAAAACAAAAAGAAAAAAAAAAACATGATTGAGAAAAATATCCTGCAAAAATGTCTTTTCTGGAGGTTTAAAAATAATGTCCTTGGATTCTTGGTGTTTATTTGGGAAACAGTGTTCTTCAGCTCTGTTGAACTATTGAGCCAGTCCTAGGGCACGCTGGGTAGCAAATGCACTTGTCCCATGACAAATGGGACAAACTGGAAAGAGAACTCTTTGTTGTCAAGGTGAAGTCAGAAATGTCTTGCAAGTCAGGATCGTTCTAGACTGAGCTAATCCATCTAGAAGAAGACAGTGCTGTAGCTATCGATGCCACATCCGCAGGACCATTTGGTGACATTTAATTTTTGCAGTGCCCCGTATTTCTGTTTGCTGATCATCCTGGAGATGGTTTTTCTTTGCAGAAAGTGCTTGTTTGGTTGCTTCCATGACAACCCGATAAGCAGTCTCTTAGCCTCTGAGGCCTGTGCTTACGTTACGGACCTGAGTGATGAGAGTTTATGAGCTTGCAAGGGAGCTATGCTCTTCTTTCAGCCTGGCAAACTTAAGTCTACCTCATTTTCAGATCACAATGTGCGGTTCCT=AAAAAAAACCAAAACAAAAAGAAAAAAAAAA ATAGCTCCCTTGCAAGCTCATAAACTCTCAT || ATGAGAGTTTATGAGCTTGCAAGGGAGCTAT
+                       
+                       4150 MGP_C57BL6NJ_T0079474.1 AAGCAGTGGTATCAACGCAGAGTGAATGAGAGTTTATGAGCTTGCAAGGGAGCTATGCTCTTCTTTCAGCCTGGCAAACTTAAGTCTACCTCATTTTCAGATCACAATGTGCGGTTCCTATAGGTAGAAAGAGAAGATGT CCTCATTTTCAGATCACAATGTGCGGTTCCT AGGAACCGCACATTGTGATCTGAAAATGAGG 1 1 0 1|4478 (3974 88 3565) |  (496,496,1,590)[0,560]TZ4150:2534:/3565/2534:0:560::ATGAGAGTTTATGAGCTTGCAAGGGAGCTAT-AAAAAAAACCAAAACAAAAAGAAAAAAAAAAACATGATTGAGAAAAATATCCTGCAAAAATGTCTTTTCTGGAGGTTTAAAAATAATGTCCTTGGATTCTTGGTGTTTATTTGGGAAACAGTGTTCTTCAGCTCTGTTGAACTATTGAGCCAGTCCTAGGGCACGCTGGGTAGCAAATGCACTTGTCCCATGACAAATGGGACAAACTGGAAAGAGAACTCTTTGTTGTCAAGGTGAAGTCAGAAATGTCTTGCAAGTCAGGATCGTTCTAGACTGAGCTAATCCATCTAGAAGAAGACAGTGCTGTAGCTATCGATGCCACATCCGCAGGACCATTTGGTGACATTTAATTTTTGCAGTGCCCCGTATTTCTGTTTGCTGATCATCCTGGAGATGGTTTTTCTTTGCAGAAAGTGCTTGTTTGGTTGCTTCCATGACAACCCGATAAGCAGTCTCTTAGCCTCTGAGGCCTGTGCTTACGTTACGGACCTGAGTGATGAGAGTTTATGAGCTTGCAAGGGAGCTATGCTCTTCTTTCAGCCTGGCAAACTTAAGTCTACCTCATTTTCAGATCACAATGTGCGGTTCCT=AAAAAAAACCAAAACAAAAAGAAAAAAAAAA ATAGCTCCCTTGCAAGCTCATAAACTCTCAT || CCTCATTTTCAGATCACAATGTGCGGTTCCT
+                       ^Should be 4124
+                       
+                       */
+                      std::cout << (kmer_pos+trpos+um_dist+1); //(trpos+um_dist+kmer_pos+1); // (pos_info.first+kmer_pos); //;(trpos+um_dist+kmer_pos+1);
+                      s2 = "T";
+                    }
+                    s2+="Z";
+                    s2=s2 + std::to_string(trpos+um_dist+kmer_pos+1) + ":" + std::to_string((trpos-(pos_info.first+um.size+index.k)+trpos-1)) + ":" + "/" + std::to_string(trpos) + "/" + std::to_string((trpos-(pos_info.first+um.size+index.k)+trpos-1));
+                    s2 = s2 + ":" + std::to_string(n->get_mc_contig(mc.first-1).first) + ":"  + std::to_string(n->get_mc_contig(mc.first-1).second) + "::" + um.mappedSequenceToString() + "-" + um.referenceUnitigToString() + "=" + um.getUnitigHead().rep().toString() + " " + um.getMappedHead().rep().toString() + " || " + km.toString();
+                    
                   }
                   //std::cout << " ii=" << ii << " trpos=" << trpos << " ";
                   //std::cout << (/*trpos-pos_info.first+1 == kmer_pos*/um_dist == 0 ? ((trpos-(pos_info.first+um.size+index.k)+trpos-1)) : (trpos+um_dist+kmer_pos+1)/*pos_info.first+kmer_pos*/); // trpos-(pos_info.first+um.size+index.k)+trpos-1;
