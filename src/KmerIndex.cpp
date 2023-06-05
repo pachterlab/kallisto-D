@@ -11,6 +11,9 @@
 #include <unordered_map>
 #include <string>
 #include "ColoredCDBG.hpp"
+#include "splitbubble.h"
+
+std::vector<Roaring> compact_tx_map; // Maps bubble IDs to transcript sets
 
 // --aa option helper functions
 // first three letters of nucleotide seq -> comma-free nuc_seq
@@ -357,6 +360,7 @@ void KmerIndex::BuildTranscripts(const ProgramOptions& opt, std::ofstream& out) 
 }
 
 void KmerIndex::BuildDistinguishingGraph(const ProgramOptions& opt, std::ofstream& out) {
+  compact = false; // Do not use compaction for this option
   k = opt.k;
   std::cerr << "[build] k-mer length: " << k << std::endl;
   size_t ncolors = 0;
@@ -514,7 +518,11 @@ void KmerIndex::BuildDeBruijnGraph(const ProgramOptions& opt, const std::string&
 
   // Write real size of graph
   tmp_size = pos2 - pos1 - sizeof(tmp_size);
-  out.write((char *)&tmp_size, sizeof(tmp_size));
+  auto mod_tmp_size = tmp_size;
+  if (compact) {
+    mod_tmp_size = tmp_size | (~(-1ULL >> 1));
+  }
+  out.write((char *)&mod_tmp_size, sizeof(tmp_size));
   out.seekp(pos2);
 
   std::vector<Minimizer> minz;
@@ -716,6 +724,8 @@ void KmerIndex::DListFlankingKmers(const ProgramOptions& opt, const std::string&
 void KmerIndex::BuildEquivalenceClasses(const ProgramOptions& opt, const std::string& tmp_file) {
 
   std::cerr << "[build] creating equivalence classes ... " << std::endl;
+  
+  compact_tx_map = std::vector<Roaring>(); // Empty vector
 
   std::vector<std::vector<TRInfo> > trinfos(dbg.size());
   UnitigMap<Node> um;
@@ -804,6 +814,14 @@ void KmerIndex::BuildEquivalenceClasses(const ProgramOptions& opt, const std::st
 }
 
 void KmerIndex::PopulateMosaicECs(std::vector<std::vector<TRInfo> >& trinfos) {
+  
+  // Set compaction variables:
+  std::vector<size_t> invbubble;
+  std::vector<Roaring> bubbles;
+  std::vector<Roaring> set_list;
+  Roaring tr_list;
+  std::vector<Roaring> tmp_set_list;
+  tmp_set_list.reserve(64);
 
   for (const auto& um : dbg) {
 
@@ -855,11 +873,55 @@ void KmerIndex::PopulateMosaicECs(std::vector<std::vector<TRInfo> >& trinfos) {
 
       assert(!u.isEmpty());
       u.runOptimize();
+      if (compact) { // Deal with compaction
+        Roaring u_;
+        u_ |= u.getIndices();
+        if ((u_ & onlist_sequences).cardinality() != u_.cardinality()) { // A d-listed element exists
+          u_ &= onlist_sequences; // Only retain non-d-listed sequences
+          u_.add(onlist_sequences.cardinality()); // Basically, d-listed elements should all just get one ID for efficient compaction
+        }
+        tr_list |= u_; // Add to list of transcripts "seen"
+        tmp_set_list.push_back(std::move(u_));
+      }
 
       // Assign mosaic EC and transcript position+sense to the corresponding part of unitig
       n->ec.insert(brpoints[i-1], brpoints[i], std::move(u));
     }
     std::vector<TRInfo>().swap(trinfos[n->id]); // potentially free up memory
+    if (compact) { // Deal with compaction
+      splitbubble::compact_rules(tmp_set_list, invbubble, bubbles);
+      set_list.insert(set_list.end(), tmp_set_list.begin(), tmp_set_list.end());
+      tmp_set_list.clear();
+    }
+  }
+  
+  if (compact) {
+    // Now deal with transcripts we haven't covered
+    tmp_set_list.clear();
+    for (size_t tr = 0; tr < num_trans; tr++) {
+      if (!tr_list.contains(tr)) {
+        Roaring u;
+        if (!onlist_sequences.contains(tr)) {
+          u.add(onlist_sequences.cardinality()); // Let's compact the D-list to just one transcript ID
+          set_list.push_back(u);
+        } else {
+          u.add(tr);
+        }
+        tmp_set_list.push_back(std::move(u)); 
+      }
+    }
+    splitbubble::compact_rules(tmp_set_list, invbubble, bubbles);
+    set_list.insert(set_list.end(), tmp_set_list.begin(), tmp_set_list.end());
+    std::cerr << "[build] Number of uncompacted elements: " << splitbubble::getNum(set_list) << std::endl;
+    splitbubble::compact(set_list, invbubble, false);
+    std::cerr << "[build] Number of compacted elements: " << splitbubble::getNum(set_list) << std::endl;
+    compact_map.resize(num_trans);
+    for (size_t bubble_id = 0; bubble_id < bubbles.size(); bubble_id++) {
+      const auto &bubble_contents = bubbles[bubble_id];
+      for (auto tr_id : bubble_contents) {
+        compact_map[tr_id] = bubble_id;
+      }
+    }
   }
 }
 
@@ -874,6 +936,14 @@ void KmerIndex::write(std::ofstream& out, int threads) {
   }
 
   // 3. serialize nodes
+  if (compact) {
+    tmp_size = compact_map.size();
+    out.write((char *)&tmp_size, sizeof(tmp_size));
+    for (int i = 0; i < compact_map.size(); i++) {
+      out.write((char *)&i, sizeof(tmp_size));
+      out.write((char *)&(compact_map[i]), sizeof(tmp_size));
+    }
+  }
   tmp_size = dbg.size();
   out.write((char *)&tmp_size, sizeof(tmp_size));
   for (const auto& um : dbg) {
@@ -1047,7 +1117,10 @@ void KmerIndex::load(ProgramOptions& opt, bool loadKmerTable, bool loadDlist) {
   // 2. deserialize dBG
   size_t tmp_size;
   in.read((char *)&tmp_size, sizeof(tmp_size));
-  tmp_size = ((-1ULL >> 1) & tmp_size); // Mask out MSB (in case we want to use it as a toggle in some future implementation)
+  size_t actual_tmp_size = ((-1ULL >> 1) & tmp_size);
+  std::vector<size_t> compact_map_;
+  compact = (actual_tmp_size != tmp_size);
+  tmp_size = actual_tmp_size;
   if (tmp_size > 0) {
 
     auto pos1 = in.tellg();
@@ -1068,6 +1141,29 @@ void KmerIndex::load(ProgramOptions& opt, bool loadKmerTable, bool loadDlist) {
   std::cerr << "[index] k-mer length: " << std::to_string(k) << std::endl;
 
   // 3. deserialize nodes
+  compact_tx_map = std::vector<Roaring>();
+  if (compact) {
+    size_t num_compact_mappings; // Number of transcript_id to bubble_id mappings
+    in.read((char *)&num_compact_mappings, sizeof(num_compact_mappings));
+    compact_map_.reserve(num_compact_mappings);
+    compact_map_.resize(num_compact_mappings);
+    for (size_t i = 0; i < num_compact_mappings; i++) {
+      size_t transcript_id, bubble_id;
+      in.read((char *)&transcript_id, sizeof(transcript_id));
+      in.read((char *)&bubble_id, sizeof(bubble_id));
+      if (bubble_id == 0) {
+      }
+      compact_map_[transcript_id] = bubble_id;
+    }
+    compact_tx_map = std::vector<Roaring>();
+    for (size_t i = 0; i < compact_map_.size(); i++) {
+      auto bubble_id = compact_map_[i];
+      auto trid = i;
+      compact_tx_map.resize(bubble_id >= compact_tx_map.size() ? (bubble_id+1) : compact_tx_map.size());
+      compact_tx_map[bubble_id].add(trid);
+    }
+    for (auto& x : compact_tx_map) x.runOptimize();
+  }
   Kmer kmer;
   size_t kmer_size = k * sizeof(char);
   char* buffer = new char[kmer_size];
@@ -1093,7 +1189,7 @@ void KmerIndex::load(ProgramOptions& opt, bool loadKmerTable, bool loadDlist) {
         std::cerr << "Error: Corrupted index; unitig not found: " << std::string(buffer) << std::endl;
         exit(1);
       }
-      um.getData()->deserialize(in, !load_positional_info); // Just one thread; read it directly
+      um.getData()->deserialize(in, !load_positional_info, compact_map_); // Just one thread; read it directly
     } else { // multi-threaded
       char* node_buf = new char[node_size];
       in.read(node_buf, node_size);
@@ -1117,7 +1213,7 @@ void KmerIndex::load(ProgramOptions& opt, bool loadKmerTable, bool loadDlist) {
               node_content = nullptr;
               std::istringstream iss;
               iss.basic_ios<char>::rdbuf(oss.rdbuf());
-              um.getData()->deserialize(iss, !load_positional_info); // No need to lock because each node is necessarily unique
+              um.getData()->deserialize(iss, !load_positional_info, compact_map_); // No need to lock because each node is necessarily unique
             }
           });
         }
@@ -1131,6 +1227,7 @@ void KmerIndex::load(ProgramOptions& opt, bool loadKmerTable, bool loadDlist) {
   buffer = nullptr;
   std::vector<std::pair<char*, std::pair<Kmer, uint32_t> > >().swap(in_buf_v); // potentially free up memory
   std::vector<std::thread>().swap(workers);
+  std::vector<size_t>().swap(compact_map_); // potentially free up memory
 
   // 4. read number of targets
   in.read((char *)&num_trans, sizeof(num_trans));

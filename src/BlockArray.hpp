@@ -430,7 +430,7 @@ class BlockArray {
             }
         }
 
-        void deserialize(std::istream& in, bool additional_opt) {
+        void deserialize(std::istream& in, bool additional_opt, std::vector<size_t>& compact_map) {
 
             clear();
 
@@ -442,7 +442,7 @@ class BlockArray {
                 in.read((char *)&mono.lb, sizeof(mono.lb));
                 in.read((char *)&mono.ub, sizeof(mono.ub));
                 T val;
-                val.deserialize(in, additional_opt);
+                val.deserialize(in, additional_opt, compact_map);
                 mono.val = std::move(val);
             } else {
 
@@ -458,7 +458,7 @@ class BlockArray {
                     in.read((char *)&ub, sizeof(ub));
 
                     T val;
-                    val.deserialize(in, additional_opt);
+                    val.deserialize(in, additional_opt, compact_map);
                     insert(lb, ub, std::move(val));
                 }
             }

@@ -124,6 +124,7 @@ struct ProgramOptions {
   bool pseudobam;
   bool genomebam;
   bool make_unique;
+  bool compact_index;
   bool fusion;
   bool dfk_onlist;
   enum class StrandType {None, FR, RF};
@@ -177,6 +178,7 @@ ProgramOptions() :
   pseudobam(false),
   genomebam(false),
   make_unique(false),
+  compact_index(false),
   fusion(false),
   dfk_onlist(false),
   strand(StrandType::None),

@@ -5,6 +5,10 @@
 #include <iostream>
 #include "roaring.hh"
 
+// Note: templates aren't actually useful here...
+
+extern std::vector<Roaring> compact_tx_map;
+
 template <class T>
 class SparseVector { // This class is stored in a BlockArray and associates transcript IDs with positions along unitig
 public:
@@ -19,6 +23,7 @@ public:
   void clear();
   
   const Roaring& getIndices() const; // Get all transcript IDs stored in this object	
+  Roaring getActualIndices() const; // Get all transcript IDs stored in this object if compacted	
   // Populates elems with (index, element) tuples
   void getElements(std::vector<std::pair<uint32_t, Roaring> > &elems) const;
   Roaring get(size_t i, bool getOne=false) const;
@@ -35,6 +40,7 @@ public:
   // Serialization/Deserialization
   void serialize(std::ostream& out) const;
   void deserialize(std::istream& in, bool small=true);
+  void deserialize(std::istream& in, bool small, std::vector<size_t>& compact_map);
   
   void runOptimize();
   size_t cardinality() const;

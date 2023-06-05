@@ -280,7 +280,19 @@ void SparseVector<T>::clear() {
 }
 
 template <class T>
+Roaring SparseVector<T>::getActualIndices() const {
+  Roaring r_actual;
+  for (auto x : r) {
+    r_actual |= compact_tx_map[x];
+  }
+  return r_actual;
+}
+
+template <class T>
 const Roaring& SparseVector<T>::getIndices() const {
+  if (compact_tx_map.size() != 0) {
+    throw std::runtime_error("Invalid call to getIndices() in SparseVector.");
+  }
   return r;
 }
 
@@ -303,9 +315,10 @@ Roaring SparseVector<T>::get(size_t i, bool getOne) const {
   if (!(flag == 1)) {
     throw std::runtime_error("Invalid call to get() in SparseVector.");
   }
-  if (flag == 1 && r.contains(i)) {
+  bool compacted = (compact_tx_map.size() != 0);
+  if (flag == 1 && ((!compacted && r.contains(i)) || (compacted && getActualIndices().contains(i)))) {
     Roaring x;
-    i = r.rank(i)-1;
+    i = !compacted ? r.rank(i)-1 : getActualIndices().rank(i)-1;
     if ((arr.v[i] | 0x40000000) == arr.v[i]) { // Second MSB is 1
         uint32_t offset = arr.v[i] & ~(0x60000000); // Mask out second and third MSB
         uint32_t arr_size = arr.a[offset];
@@ -325,6 +338,9 @@ Roaring SparseVector<T>::get(size_t i, bool getOne) const {
 
 template <class T>
 bool SparseVector<T>::contains(size_t i) const {
+  if (compact_tx_map.size() != 0) {
+    return getActualIndices().contains(i);
+  }
   return r.contains(i);
 }
 
@@ -335,15 +351,17 @@ bool SparseVector<T>::isEmpty() const {
 
 template <class T>
 char SparseVector<T>::operator[] (size_t i) {
-  if (r.contains(i)) {
+  bool compacted = (compact_tx_map.size() != 0);
+  if ((!compacted && r.contains(i)) || (compacted && getActualIndices().contains(i))) {
+    auto rank = !compacted ? r.rank(i) : getActualIndices().rank(i);
     if (flag == 2) {
-      return (tinyarr[r.rank(i) - 1]);
+      return (tinyarr[rank - 1]);
     } else if (flag == 3) {
-      return (bool)((tinybits & ((uint64_t)1 << (uint64_t)(r.rank(i)-1))) != 0);
+      return (bool)((tinybits & ((uint64_t)1 << (uint64_t)(rank-1))) != 0);
     } else if (flag == 4) {
-      return ((*v)[r.rank(i) - 1].minimum() & 0x7FFFFFFF) == (*v)[r.rank(i) - 1].minimum();
+      return ((*v)[rank - 1].minimum() & 0x7FFFFFFF) == (*v)[rank - 1].minimum();
     } else if (flag == 1) {
-      i = r.rank(i)-1;
+      i = rank-1;
       if ((arr.v[i] | 0x20000000) == arr.v[i]) { // Third MSB is set to 1 (aka ambiguous strand)
         return 2; 
       }
@@ -362,15 +380,17 @@ char SparseVector<T>::operator[] (size_t i) {
 
 template <class T>
 const char SparseVector<T>::operator[] (size_t i) const {
-  if (r.contains(i)) {
+  bool compacted = (compact_tx_map.size() != 0);
+  if ((!compacted && r.contains(i)) || (compacted && getActualIndices().contains(i))) {
+    auto rank = !compacted ? r.rank(i) : getActualIndices().rank(i);
     if (flag == 2) {
-      return (tinyarr[r.rank(i) - 1]);
+      return (tinyarr[rank - 1]);
     } else if (flag == 3) {
-      return (bool)((tinybits & ((uint64_t)1 << (uint64_t)(r.rank(i)-1))) != 0);
+      return (bool)((tinybits & ((uint64_t)1 << (uint64_t)(rank-1))) != 0);
     } else if (flag == 4) {
-      return ((*v)[r.rank(i) - 1].minimum() & 0x7FFFFFFF) == (*v)[r.rank(i) - 1].minimum();
+      return ((*v)[rank - 1].minimum() & 0x7FFFFFFF) == (*v)[rank - 1].minimum();
     } else if (flag == 1) {
-      i = r.rank(i)-1;
+      i = rank-1;
       if ((arr.v[i] | 0x20000000) == arr.v[i]) { // Third MSB is set to 1 (aka ambiguous strand)
         return 2;
       }
@@ -423,6 +443,12 @@ void SparseVector<T>::serialize(std::ostream& out) const {
 
 template <class T>
 void SparseVector<T>::deserialize(std::istream& in, bool small) {
+  std::vector<size_t> compact_map_tmp;
+  deserialize(in, small, compact_map_tmp);
+}
+
+template <class T>
+void SparseVector<T>::deserialize(std::istream& in, bool small, std::vector<size_t>& compact_map) {
   if (flag == 4) {
     throw std::runtime_error("Invalid call to deserialize() in SparseVector.");
   }
@@ -453,6 +479,14 @@ void SparseVector<T>::deserialize(std::istream& in, bool small) {
     arr.v = new uint32_t[v_size];
   }
   assert(r.cardinality() == v_size);
+  if (compact_map.size() != 0 && !r.isEmpty()) {
+    Roaring r_ = Roaring();
+    for (auto x : r) {
+      auto bubble_id = compact_map[x];
+      r_.add(bubble_id);
+    }
+    r = std::move(r_);
+  }
   size_t offset = 0; // offset (only for flag=1)
   std::vector<uint32_t> arr_a_vec; // Temporary vector to store contents that will be transferred to arr.a (only for flag=1)
   for (size_t i = 0; i < v_size; ++i) {
@@ -521,5 +555,8 @@ void SparseVector<T>::runOptimize() {
 
 template <class T>
 size_t SparseVector<T>::cardinality() const {
+  if (compact_tx_map.size() != 0) {
+    return getActualIndices().cardinality();
+  }
   return r.cardinality();
 }
