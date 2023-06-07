@@ -732,6 +732,9 @@ void KmerIndex::BuildEquivalenceClasses(const ProgramOptions& opt, const std::st
   size_t EC_THRESHOLD = 250;
   size_t EC_SOFT_THRESHOLD = 800;
   size_t EC_MAX_N_ABOVE_THRESHOLD = 6000; // Thresholding ECs to size EC_THRESHOLD will only occur if we encounter >EC_MAX_N_ABOVE_THRESHOLD number of nodes that have size >EC_SOFT_THRESHOLD
+  if (compact) {
+    EC_THRESHOLD = std::numeric_limits<uint32_t>::max(); // Default: Don't want to threshold if compact
+  }
   if (opt.max_ec_size > 0) { // If max EC size is supplied, override the default thresholds
     EC_THRESHOLD = opt.max_ec_size;
     EC_SOFT_THRESHOLD = EC_THRESHOLD;
@@ -1139,6 +1142,9 @@ void KmerIndex::load(ProgramOptions& opt, bool loadKmerTable, bool loadDlist) {
     k = dbg.getK();
   }
   std::cerr << "[index] k-mer length: " << std::to_string(k) << std::endl;
+  if (compact) {
+    std::cerr << "[index] index is compacted; uncompacting it" << std::endl;
+  }
 
   // 3. deserialize nodes
   compact_tx_map = std::vector<Roaring>();
@@ -1151,8 +1157,6 @@ void KmerIndex::load(ProgramOptions& opt, bool loadKmerTable, bool loadDlist) {
       size_t transcript_id, bubble_id;
       in.read((char *)&transcript_id, sizeof(transcript_id));
       in.read((char *)&bubble_id, sizeof(bubble_id));
-      if (bubble_id == 0) {
-      }
       compact_map_[transcript_id] = bubble_id;
     }
     compact_tx_map = std::vector<Roaring>();

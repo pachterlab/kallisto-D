@@ -59,7 +59,7 @@ class Node: public CDBG_Data_t<Node> {
         ec.serialize(out);
     }
 
-    void deserialize(std::istream& in, bool small, std::vector<size_t> compact_map) {
+    void deserialize(std::istream& in, bool small, std::vector<size_t>& compact_map) {
 
         size_t tmp_size;
         uint32_t tmp_uint;

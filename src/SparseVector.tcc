@@ -74,9 +74,10 @@ SparseVector<T>::SparseVector(const SparseVector<T> &arg) {
   flag = arg.flag;
   if (flag == 1) {
     new (&arr) posinfo;
-    arr.v = new uint32_t[arg.cardinality()];
+    auto card = arg.cardinality();
+    arr.v = new uint32_t[card];
     size_t num_elems = 0;
-    for (size_t i = 0; i < arg.cardinality(); i++) {
+    for (size_t i = 0; i < card; i++) {
       arr.v[i] = arg.arr.v[i];
       if ((arg.arr.v[i] | 0x40000000) == arg.arr.v[i]) { // Second MSB is 1
         uint32_t offset = arg.arr.v[i] & ~(0x60000000);
@@ -93,8 +94,9 @@ SparseVector<T>::SparseVector(const SparseVector<T> &arg) {
       }
   } else if (flag == 2) {
     new (&tinyarr) auto(arg.tinyarr);
-    tinyarr = new char[arg.cardinality()];
-    for (size_t i = 0; i < arg.cardinality(); i++) {
+    auto card = arg.cardinality();
+    tinyarr = new char[card];
+    for (size_t i = 0; i < card; i++) {
       tinyarr[i] = arg.tinyarr[i];
     }
   } else if (flag == 3) {
@@ -150,13 +152,15 @@ SparseVector<T>& SparseVector<T>::operator=(SparseVector<T> &&other) {
 template <class T>
 SparseVector<T>& SparseVector<T>::operator=(const SparseVector<T> &other) {
   flag = other.flag;
+  size_t card;
   switch (flag) {
   case 1:
     new (&arr) posinfo;
-    arr.v = new uint32_t[other.cardinality()];
+    card = other.cardinality();
+    arr.v = new uint32_t[card];
     {
       size_t num_elems = 0;
-      for (size_t i = 0; i < other.cardinality(); i++) {
+      for (size_t i = 0; i < card; i++) {
         arr.v[i] = other.arr.v[i];
         if ((other.arr.v[i] | 0x40000000) == other.arr.v[i]) { // Second MSB is 1
           uint32_t offset = other.arr.v[i] & ~(0x60000000);
@@ -177,9 +181,10 @@ SparseVector<T>& SparseVector<T>::operator=(const SparseVector<T> &other) {
     break;
   case 2:
     new (&tinyarr) auto(other.tinyarr);
+    card = other.cardinality();
     tinyarr = other.tinyarr;
-    tinyarr = new char[other.cardinality()];
-    for (size_t i = 0; i < other.cardinality(); i++) {
+    tinyarr = new char[card];
+    for (size_t i = 0; i < card; i++) {
       tinyarr[i] = other.tinyarr[i];
     }
     break;
